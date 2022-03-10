@@ -62,11 +62,14 @@ process_neg_disp(uint32_t neg_num)
 }
 
 int
-get_opcode_offset(asm_reg reg_value)
+get_opcode_offset(struct instr *instrc)
 {
 
-    unsigned int index = reg_value & MODE_MASK;
-    if ( IN_RANGE(index, reg16, ext64) )
+    unsigned int base = instrc->opd[0].reg & MODE_MASK;
+    unsigned int index = instrc->opd[0].index & MODE_MASK;
+    if (IN_RANGE(base, reg16, ext64))
+        return 1;
+    else if (IN_RANGE(index, reg16, ext64))
         return 1;
     else
         return NONE;
@@ -99,6 +102,7 @@ get_reg_str(char* opd_str, char* reg)
             return;
     }
 }
+
 static unsigned int
 check_sib_disp(struct instr* instruc, char scale, char next)
 {
@@ -125,6 +129,7 @@ check_sib_disp(struct instr* instruc, char scale, char next)
     }
     return EXIT_SUCCESS;
 }
+
 unsigned int
 get_index_reg(struct instr* instruc, char* mem, char* reg)
 {

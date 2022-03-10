@@ -70,8 +70,8 @@ line_to_instr(struct instr* instr_data, char* filtered_asm_str)
         opd_type[i] = instr_data->opd[i].type;
     operand_format opd_format = get_opd_format(opd_type);
     FAIL_IF_VAR(opd_format == opd_error, "illegal operand format: %s\n", opd_type)
-    // jcc [MEM] no register
-    if ( opd_format == m && instr_data->opd[0].str[0] == '\0' )
+    // jmp [MEM] no register
+    if (opd_format == m && instr_data->opd[0].str[0] == '\0' && instr_data->opd[0].sib[0] == '\0') 
     {
         instr_data->mod_disp &= MOD16;
         instr_data->keyword.is_short = true;
@@ -105,7 +105,7 @@ line_to_instr(struct instr* instr_data, char* filtered_asm_str)
     if ( INSTR_TABLE[instr_data->key].type == CONTROL_FLOW && IN_RANGE(instr_data->cons, NEG32BIT + 1, NEG64BIT) )
         instr_data->cons &= 0xffffffff;
     // encode for the reg_hex value and op_offset for instruction
-    if ( instr_data->opd[0].reg != reg_none )
+    if ( instr_data->opd[0].reg != reg_none || instr_data->opd[0].index != reg_none)
     {
         // gets all offsets
         encode_offset(instr_data);

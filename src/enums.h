@@ -196,6 +196,7 @@ typedef enum
     movzx,
     mulpd,
     mulx,
+    neg,
     nop,
     not,
     or,

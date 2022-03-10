@@ -77,7 +77,7 @@ encode_offset(struct instr* instrc)
         return;
     // set opcode offset
     if ( INSTR_TABLE[instrc->key].type != CONTROL_FLOW && !instrc->keyword.is_byte )
-        instrc->op_offset = get_opcode_offset(instrc->opd[0].reg);
+        instrc->op_offset = get_opcode_offset(instrc);
 }
 
 /**
@@ -125,10 +125,8 @@ encode_mem(struct instr* instrc, int m)
 static int
 encode_two_opds(struct instr* instrc, int r, int m)
 {
-
     if ( encode_mem(instrc, m) != NA )
         auto_set_operand(instrc, instrc->opd[r].reg);
-    // printf("instrc->keyword.is_word = %d\n", instrc->keyword.is_word);
     // check if a second register exist in memory reference ex: [rax+rcx]
     FAIL_IF(get_reg(instrc, &instrc->opd[m], instrc->opd[r].reg));
     instrc->hex.rex = get_rex_prefix(instrc, &instrc->opd[m], &instrc->opd[r]);
@@ -142,7 +140,6 @@ encode_two_opds(struct instr* instrc, int r, int m)
 static int
 encode_three_opds(struct instr* instrc, int r, int m, int v)
 {
-
     if ( encode_mem(instrc, m) != NA )
         auto_set_operand(instrc, instrc->opd[r].reg);
 
@@ -163,7 +160,6 @@ encode_three_opds(struct instr* instrc, int r, int m, int v)
 static int
 encode_special_opd(struct instr* instrc, int m, int i)
 {
-
     struct operand no_register = {NULL, {'\0'}, reg_none, {'\0'}, reg_none, 0};
     switch ( INSTR_TABLE[instrc->key].encode_operand )
     {
@@ -236,7 +232,6 @@ encode_operands(struct instr* instrc)
 static void
 nasm_register_size_optimize(struct instr* instrc)
 {
-
     switch ( instrc->opd[0].reg & MODE_MASK )
     {
     case reg64:
@@ -252,116 +247,98 @@ nasm_register_size_optimize(struct instr* instrc)
     }
 }
 
-void
-encode_imm(struct instr* instrc)
-{
+void 
+encode_imm(struct instr *instrc) {
     // ignore imm value if instruction is a branch type
-    if ( (INSTR_TABLE[instrc->key].type == SHIFT && instrc->cons == 1) ||
-         INSTR_TABLE[instrc->key].type == CONTROL_FLOW )
+    if ((INSTR_TABLE[instrc->key].type == SHIFT && instrc->cons == 1) ||
+        INSTR_TABLE[instrc->key].type == CONTROL_FLOW)
         instrc->imm = false;
     // used for shift instruction with an 8bit imm rather than one
-    else if ( INSTR_TABLE[instrc->key].type == SHIFT && instrc->cons > 1 )
+    else if (INSTR_TABLE[instrc->key].type == SHIFT && instrc->cons != 1)
         instrc->key++;
     // change op offset based on reg and imm size
-    if ( !instrc->imm )
+    if (!instrc->imm)
         return;
-    // return register rax for imm instrctions sub, sbb, add, adc
-    asm_instr sp_instr = EOI;
-    if ( INSTR_TABLE[instrc->key].encode_operand == M )
-    {
-        // special case for the al register
-        if ( (instrc->opd[0].reg == al && instrc->cons != NEG64BIT) )
-        {
-            sp_instr = to_special_instr_key(instrc->key);
-        }
-        else if ( ((instrc->opd[0].reg & REG_MASK) == al && IN_RANGE(instrc->cons, MAX_SIGNED_8BIT + 1, NEG64BIT - 1) &&
-                   !(IN_RANGE(instrc->cons, NEG80BIT, NEG64BIT - 1))) )
-            sp_instr = to_special_instr_key(instrc->key);
-        // return if instruction has special encoding
-        if ( sp_instr )
-            instrc->key = sp_instr;
-    }
-    // vector shift instrctions
-    if ( (instrc->opd[0].reg & MODE_MASK) == mmx64 )
-    {
-        instrc->reduced_imm = true;
-        // 16 to 64 bit register and 8 bit immediate combination
-        // special case for test
-    }
-    else if ( instrc->op_offset == 1 && INSTR_TABLE[instrc->key].type == PAD_ALWAYS )
-    {
-        if ( IN_RANGE(instrc->cons, NEG32BIT + 1, NEG64BIT) )
-        {
-            DO_NOT_PAD(instrc->cons, instrc->reduced_imm);
-        }
-        if ( (instrc->opd[0].reg & REG_MASK) == al )
+    // return register used for imm instructions sub, sbb, add, adc
+    if (INSTR_TABLE[instrc->key].type == OPERATION) {
+    // special case for the al register
+        if ((instrc->opd[0].reg == al && instrc->cons != NEG64BIT &&
+             instrc->cons != MAX_UNSIGNED_32BIT)) {
+            instrc->key++;
+        } else if (((instrc->opd[0].reg & REG_MASK) == al && instrc->cons != MAX_UNSIGNED_32BIT
+                    && IN_RANGE(instrc->cons, MAX_SIGNED_8BIT + 1, NEG64BIT - 1)
+                    && !(IN_RANGE(instrc->cons, NEG80BIT, NEG64BIT - 1))))
             instrc->key++;
     }
+    // vector shift instrctions
+    if ((instrc->opd[0].reg & MODE_MASK) == mmx64) {
+        instrc->reduced_imm = true;
+    // special case for test
+    } else if (instrc->op_offset == 1 && INSTR_TABLE[instrc->key].type == PAD_ALWAYS) {
+        if (IN_RANGE(instrc->cons, NEG32BIT + 1, NEG64BIT)) {
+            DO_NOT_PAD(instrc->cons, instrc->reduced_imm, MAX_UNSIGNED_32BIT);
+        }
+        if ((instrc->opd[0].reg & REG_MASK) == al)
+        instrc->key++;
     // 16 to 64 bit register and 8 bit immediate combination
-    else if ( instrc->op_offset == 1 && INSTR_TABLE[instrc->key].type != DATA_TRANSFER )
-    {
+    } else if (instrc->op_offset == 1 && INSTR_TABLE[instrc->key].type != DATA_TRANSFER) {
         //-0x1 and 0x0 are always 8 bits except for mov
         // 8 bit positive
-        if ( instrc->cons <= 0xe0 )
+        if (instrc->cons <= 0xe0)
             instrc->op_offset += 2;
         // 8 bit positive immediate
-        if ( instrc->cons > MAX_SIGNED_8BIT )
+        if (instrc->cons > MAX_SIGNED_8BIT)
             instrc->op_offset = 1;
         // 8 bit negative immediate
-        if ( IN_RANGE(instrc->cons, NEG8BIT + 1, NEG64BIT) && (instrc->cons & NEG8BIT_CHECK) )
-        {
-            DO_NOT_PAD(instrc->cons, instrc->reduced_imm);
+        if (IN_RANGE(instrc->cons, NEG8BIT + 1, NEG64BIT) && (instrc->cons & NEG8BIT_CHECK)) {
+            instrc->cons &= MAX_UNSIGNED_8BIT;
+            instrc->op_offset += 2;
+        // negative 32 bit number
+        } else if (IN_RANGE(instrc->cons, NEG32BIT + 1, NEG64BIT)) {
+            DO_NOT_PAD(instrc->cons, instrc->reduced_imm, MAX_UNSIGNED_32BIT);
+        // positive 32 bit number
+        } else if (IN_RANGE(instrc->cons, X32BIT_CHECK, MAX_UNSIGNED_32BIT)) {
+            DO_NOT_PAD(instrc->cons, instrc->reduced_imm, MAX_UNSIGNED_32BIT);
+        if (IN_RANGE(instrc->cons, NEG80_32BIT, MAX_UNSIGNED_32BIT)) {
+            instrc->cons &= MAX_UNSIGNED_8BIT;
+            instrc->op_offset += 2;
         }
-        else if ( IN_RANGE(instrc->cons, NEG32BIT + 1, NEG64BIT) )
-        {
-
-            instrc->cons &= MAX_UNSIGNED_32BIT;
-            instrc->reduced_imm = true;
-        }
-        // special condition for to mov instruction
     }
-    else if ( INSTR_TABLE[instrc->key].type == DATA_TRANSFER )
-    {
+    // special condition for to mov instruction
+    } else if (INSTR_TABLE[instrc->key].type == DATA_TRANSFER) {
         // calculate value for +rd and +rw
         instrc->rd_offset = instrc->opd[0].reg & VALUE_MASK;
         // only condition for mov with M operand encoding implementation
         // check if immediate operand is a negative 32 bit value
-        if ( IN_RANGE(instrc->cons, NEG32BIT + 1, NEG64BIT) && (instrc->cons & NEG32BIT_CHECK) &&
-             ((instrc->opd[0].reg & reg64) || instrc->mem_disp) )
-        {
+        if (IN_RANGE(instrc->cons, NEG32BIT + 1, NEG64BIT) && (instrc->cons & NEG32BIT_CHECK)
+            && ((instrc->opd[0].reg & reg64) || instrc->mem_disp)) {
             // set mov I operand encoding to M
             instrc->key++;
-            DO_NOT_PAD(instrc->cons, instrc->reduced_imm);
+            DO_NOT_PAD(instrc->cons, instrc->reduced_imm, MAX_UNSIGNED_32BIT);
             return;
-        }
-        else if ( instrc->cons <= MAX_UNSIGNED_32BIT )
-        {
-            if ( (instrc->assembly_opt & NASM_MOV_IMM) && !instrc->mem_disp )
+        } else if (instrc->cons <= MAX_UNSIGNED_32BIT) {
+            if ((instrc->assembly_opt & NASM_MOV_IMM) && !instrc->mem_disp)
                 nasm_register_size_optimize(instrc);
             // ensure instruction does not default to movabs
-            else if ( (instrc->cons < NEG32BIT_CHECK && (instrc->opd[0].reg & MODE_MASK) >= reg64) || instrc->mem_disp )
+            else if ((instrc->cons < NEG32BIT_CHECK && (instrc->opd[0].reg & MODE_MASK) >= reg64)
+                      || instrc->mem_disp)
                 instrc->key++;
         }
-        if ( (instrc->opd[0].reg & MODE_MASK) > noext8 )
-        {
-            if ( (instrc->assembly_opt & NASM_MOV_IMM) && !instrc->mem_disp )
+        if ((instrc->opd[0].reg & MODE_MASK) > noext8) {
+            if ((instrc->assembly_opt & NASM_MOV_IMM) && !instrc->mem_disp)
                 instrc->op_offset = 8;
-            else if ( INSTR_TABLE[instrc->key].encode_operand == I )
+            else if (INSTR_TABLE[instrc->key].encode_operand == I)
                 instrc->op_offset = 8;
         }
     }
     // mask all bits except for the most significant byte
-    if ( (instrc->opd[0].reg & MODE_MASK) < reg32 )
-    {
-        instrc->cons &= MAX_UNSIGNED_16BIT;
-        instrc->reduced_imm = true;
-        if ( ((instrc->opd[0].reg & MODE_MASK) == reg16 || (instrc->opd[0].reg & MODE_MASK) == ext16) &&
-             instrc->cons <= MAX_UNSIGNED_8BIT )
-            instrc->reduced_imm = false;
-    }
-    if ( (instrc->opd[0].reg & MODE_MASK) < reg16 )
-    {
-        instrc->cons &= MAX_UNSIGNED_8BIT;
-        instrc->reduced_imm = true;
-    }
+    if ((instrc->opd[0].reg & MODE_MASK) < reg32) {
+        DO_NOT_PAD(instrc->cons, instrc->reduced_imm, MAX_UNSIGNED_16BIT);
+    if (((instrc->opd[0].reg & MODE_MASK) == reg16 || (instrc->opd[0].reg & MODE_MASK) == ext16)
+         && instrc->cons <= MAX_UNSIGNED_8BIT)
+        instrc->reduced_imm = false;
+  }
+  if ((instrc->opd[0].reg & MODE_MASK) < reg16) {
+    DO_NOT_PAD(instrc->cons, instrc->reduced_imm, MAX_UNSIGNED_8BIT);
+  }
 }

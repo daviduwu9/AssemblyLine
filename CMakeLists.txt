@@ -12,6 +12,7 @@ include(CTest)
 
 set(PROJECT_AUTHOR 0xADE1A1DE)
 set(PROJECT_LICENSE "Apache License 2.0")
+set(CMAKE_VERBOSE_MAKEFILE ON)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 

@@ -43,12 +43,15 @@
 #define NEG32BIT 0xffffffff00000000
 #define NEG8BIT 0xffffffffffffff00
 #define NEG80BIT 0xffffffffffffff80
+#define NEG80_32BIT 0xffffff80
 #define MAX_SIGNED_8BIT 0x7f
 #define MAX_UNSIGNED_8BIT 0xff
 #define MAX_UNSIGNED_16BIT 0xffff
 #define MAX_SIGNED_32BIT 0x7fffffff
 #define MAX_UNSIGNED_32BIT 0xffffffff
 #define NEG32BIT_CHECK 0x80000000
+// check if a number is at least 32 bits
+#define X32BIT_CHECK 0x10000000
 #define NEG8BIT_CHECK 0x80
 
 // set register length to 1 byte
@@ -134,10 +137,10 @@
 
 // used only in tokenizer
 #define IN_RANGE(var, lower, upper) ((var >= lower) && (var <= upper))
-#define DO_NOT_PAD(reduce, set)                                                                                        \
-    reduce &= MAX_UNSIGNED_32BIT;                                                                                      \
-    set = true;
-
+#define DO_NOT_PAD(reduce, set, mask)                                          \
+  reduce &= mask;                                                              \
+  set = true;
+  
 // keyword length
 #define DWORD_LEN 5
 #define BYTE_LEN 4

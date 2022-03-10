@@ -133,6 +133,8 @@ get_reg(struct instr* instrc, struct operand* m, int r)
             m->reg          = NO_BASE;
             instrc->no_base = true;
         }
+        if(m->reg == NO_BASE)
+            instrc->mod_disp = 0;
     }
     // check for index register
     if ( m->index == reg_none )

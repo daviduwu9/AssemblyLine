@@ -110,6 +110,7 @@ asm_create_instance(uint8_t* buffer, int len)
     al->debug     = false;
     al->finalized = false;
     asm_build_index_tables(al);
+    // asm_set_all(al, ASM_OPT_STRICT);
     return al;
 }
 
